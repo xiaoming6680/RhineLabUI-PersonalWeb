@@ -36,7 +36,7 @@ try{
  await page.locator('.viewer-open').click();await page.waitForFunction(()=>JSON.parse(document.querySelector('.model-viewer')?.dataset.stats||'{}').ready);
  await page.locator('[data-viewer="explode"]').click();await page.waitForFunction(()=>JSON.parse(document.querySelector('.model-viewer').dataset.stats).spread===1);
  await mkdir('.tools/responsive',{recursive:true});await page.screenshot({path:'.tools/responsive/pwa-offline.png'});
- assert.ok(await page.evaluate(async()=>{const r=await fetch('/audio/motif.ogg');return r.ok&&(await r.arrayBuffer()).byteLength>100000}));
+ assert.ok(await page.evaluate(async()=>{const r=await fetch('/audio/bgm-loop.ogg');return r.ok&&(await r.arrayBuffer()).byteLength>100000}));
  report.checks.push('offline reload, fonts, document export, model viewer, explosion and audio resource');
  await context.setOffline(false);revision=2;
  await page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update()});

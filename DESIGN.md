@@ -155,7 +155,9 @@ reference/micro-transition-review.html 验证真实应用中的快切、最终�
 
 依据原片 6.76–40 秒画面及音轨动态、莱茵生命相关设定，新增原创「观测室」三轨循环配乐与交互音效，后续修订共 17 类。浏览、详情、独立模型查看以及启动阶段采用不同声部比例；用户可以独立控制音乐和音效。旧版静音偏好继续生效。
 
-设计、参考依据、复现命令、技术验证及听感限制见 `verification/AUDIO-DESIGN.md`。本次未进行人工听辨确认；试听入口为 `reference/audio-check.html`，生成器为 `scripts/render-audio.mjs`。
+设计、参考依据、复现命令、技术验证及听感限制见 `verification/AUDIO-DESIGN.md`。本次未进行人工听辨确认；试听入口为 `reference/audio-check.html`。
+
+2026-09-10 更新：应用户要求，原创配乐已被参考网站录屏的声音取代。开场声音 1:1 使用录音；背景音乐为同一录音的去人声循环版，欢迎页起进入，浏览、详情与查看器保持同一音量，不再按场景调整声部。生成与循环点选择见 `scripts/build-bgm.py` 与 `verification/AUDIO-DESIGN.md`。
 
 ### 玻璃交互声音修订
 

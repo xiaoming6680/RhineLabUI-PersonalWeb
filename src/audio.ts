@@ -1,5 +1,5 @@
-import { hasTypingBetween } from "./typing-rhythm";
 import { TYPING_PCM, TYPING_SAMPLE_RATE } from "./typing-samples";
+import { BGM_LOOP } from "./bgm-loop";
 import { assetUrl } from "./asset-url";
 export type Sound =
   | "page-open"
@@ -26,8 +26,10 @@ export type AudioPreferences = {
   soundVolume: number;
   musicVolume: number;
 };
-const STEMS = ["atmosphere", "motif", "pulse"] as const;
-const LOOP_SECONDS = 160 / 3;
+/** Reference time (seconds) at which the recorded boot sound starts: the first white frame. */
+export const INTRO_START = 6.76;
+/** Reference time at which the music enters: the end of the boot recording (the welcome page). */
+export const MUSIC_START = INTRO_START + BGM_LOOP.introSeconds;
 const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>();
 const typingBuffers = new WeakMap<
   BaseAudioContext,
@@ -65,19 +67,6 @@ const level = (
   param.cancelAndHoldAtTime(now);
   param.linearRampToValueAtTime(value, now + seconds);
 };
-export const BOOT_CUES: readonly { time: number; sound: Sound }[] = [
-  { time: 9.16, sound: "brand" },
-  { time: 11.84, sound: "confirm" },
-  { time: 19.48, sound: "scan" },
-  { time: 21.84, sound: "confirm" },
-  { time: 22.76, sound: "welcome" },
-  { time: 23.52, sound: "text-reveal" },
-  { time: 25.04, sound: "text-reveal" },
-  { time: 26.92, sound: "array" },
-  { time: 30.68, sound: "open" },
-  { time: 34.3, sound: "inspect" },
-];
-
 /** Shared by live playback and OfflineAudioContext verification. */
 export function synthesizeSound(
   c: BaseAudioContext,
@@ -312,10 +301,14 @@ export class TerminalAudio {
   private effects?: GainNode;
   private musicBus?: GainNode;
   private duck?: GainNode;
-  private stemGains: GainNode[] = [];
-  private buffers?: AudioBuffer[];
+  private buffers?: { intro: AudioBuffer; music: AudioBuffer };
   private loading?: Promise<void>;
-  private tracks: AudioBufferSourceNode[] = [];
+  private track?: AudioBufferSourceNode;
+  private intro?: {
+    source: AudioBufferSourceNode;
+    offset: number;
+    startedAt: number;
+  };
   private voices: ReturnType<typeof synthesizeSound>[] = [];
   private lastSound = new Map<Sound, number>();
   private scene: SoundScene = "boot";
@@ -327,8 +320,6 @@ export class TerminalAudio {
   private error = "";
   private requestId = 0;
   private suspension: Promise<void> = Promise.resolve();
-  private bootMix = -1;
-  private playedKeys = 0;
   constructor() {
     document.addEventListener("pointerdown", this.gesture, { capture: true });
     document.addEventListener("keydown", this.gesture, { capture: true });
@@ -347,8 +338,9 @@ export class TerminalAudio {
   }
   restartBoot() {
     this.stopEffects();
-    this.bootTime = 6.76;
-    this.bootMix = -1;
+    this.stopMusic();
+    this.offset = 0;
+    this.bootTime = INTRO_START;
   }
   private hide = () => {
     this.requestId++;
@@ -407,13 +399,6 @@ export class TerminalAudio {
     this.duck.connect(master);
     master.connect(limiter);
     limiter.connect(c.destination);
-    this.stemGains = STEMS.map(() => {
-      const gain = c.createGain();
-      gain.gain.value = 0;
-      gain.connect(this.musicBus!);
-      return gain;
-    });
-    this.mixScene();
     return c;
   }
   private async activate() {
@@ -431,25 +416,23 @@ export class TerminalAudio {
       if (id !== this.requestId || this.disposed || document.hidden) return;
       if (c.state === "suspended") await c.resume();
       if (id !== this.requestId || document.hidden || this.disposed) return;
-      if (this.prefs.music) {
-        await this.loadMusic(c);
-        if (id === this.requestId) this.startMusic();
-      }
+      await this.loadAssets(c);
+      if (id === this.requestId) this.startMusic();
     } catch (e) {
       this.error = e instanceof Error ? e.message : "Audio unavailable";
     }
   }
-  private loadMusic(c: AudioContext) {
+  private loadAssets(c: AudioContext) {
     if (this.buffers) return Promise.resolve();
     this.loading ??= Promise.all(
-      STEMS.map(async (name) => {
+      ["boot-intro", "bgm-loop"].map(async (name) => {
         const response = await fetch(assetUrl(`audio/${name}.ogg`));
-        if (!response.ok) throw new Error(`Music ${name}: ${response.status}`);
+        if (!response.ok) throw new Error(`Audio ${name}: ${response.status}`);
         return c.decodeAudioData(await response.arrayBuffer());
       }),
     )
-      .then((buffers) => {
-        this.buffers = buffers;
+      .then(([intro, music]) => {
+        this.buffers = { intro, music };
         this.error = "";
       })
       .finally(() => {
@@ -457,82 +440,132 @@ export class TerminalAudio {
       });
     return this.loading;
   }
+  /** During the boot sequence the music is slaved to the reference clock and waits for the welcome page. */
+  private musicAllowed() {
+    return (
+      this.scene !== "boot" ||
+      (this.bootTime !== null && this.bootTime >= MUSIC_START)
+    );
+  }
   private startMusic() {
     const c = this.context;
     if (
       !c ||
       c.state !== "running" ||
       !this.buffers ||
-      this.tracks.length ||
+      this.track ||
       !this.prefs.music ||
+      !this.musicAllowed() ||
       this.disposed ||
       document.hidden
     )
       return;
+    const src = c.createBufferSource();
+    src.buffer = this.buffers.music;
+    src.loop = true;
+    src.loopStart = BGM_LOOP.loopStart;
+    src.loopEnd = Math.min(BGM_LOOP.loopEnd, src.buffer.duration);
+    src.connect(this.musicBus!);
     this.startedAt = c.currentTime + 0.04;
-    this.tracks = this.buffers.map((buffer, i) => {
-      const src = c.createBufferSource();
-      src.buffer = buffer;
-      src.loop = true;
-      src.loopStart = 0;
-      src.loopEnd = Math.min(LOOP_SECONDS, buffer.duration);
-      src.connect(this.stemGains[i]);
-      src.start(this.startedAt, this.offset % src.loopEnd);
-      return src;
-    });
+    if (this.scene === "boot" && this.bootTime !== null)
+      this.offset = this.bootTime - MUSIC_START;
+    this.offset = this.wrapMusic(this.offset);
+    src.start(this.startedAt, this.offset);
+    this.track = src;
     this.musicBus!.gain.cancelScheduledValues(c.currentTime);
     this.musicBus!.gain.setValueAtTime(0, c.currentTime);
     this.musicBus!.gain.linearRampToValueAtTime(
       this.prefs.musicVolume,
-      c.currentTime + 1.2,
+      c.currentTime + (this.offset < 0.05 ? 0.05 : 0.6),
     );
   }
+  /** Map a playback position past the loop end back into the looped region. */
+  private wrapMusic(position: number) {
+    const { loopStart, loopEnd } = BGM_LOOP;
+    if (position < loopEnd) return Math.max(0, position);
+    return loopStart + ((position - loopStart) % (loopEnd - loopStart));
+  }
   private stopMusic() {
-    const c = this.context;
-    if (!c || !this.tracks.length) return;
-    this.offset =
-      (this.offset + Math.max(0, c.currentTime - this.startedAt)) %
-      LOOP_SECONDS;
-    this.tracks.forEach((track, i) => {
-      const fade = c.createGain();
+    const c = this.context,
+      track = this.track;
+    if (!c || !track) return;
+    this.offset = this.wrapMusic(
+      this.offset + Math.max(0, c.currentTime - this.startedAt),
+    );
+    const fade = c.createGain();
+    track.disconnect();
+    track.connect(fade);
+    fade.connect(this.musicBus!);
+    fade.gain.setValueAtTime(1, c.currentTime);
+    fade.gain.linearRampToValueAtTime(0, c.currentTime + 0.06);
+    track.stop(c.currentTime + 0.07);
+    track.onended = () => {
       track.disconnect();
-      track.connect(fade);
-      fade.connect(this.stemGains[i]);
-      fade.gain.setValueAtTime(1, c.currentTime);
-      fade.gain.linearRampToValueAtTime(0, c.currentTime + 0.06);
-      track.stop(c.currentTime + 0.07);
-      track.onended = () => {
-        track.disconnect();
-        fade.disconnect();
-      };
-    });
-    this.tracks = [];
+      fade.disconnect();
+    };
+    this.track = undefined;
+  }
+  private stopIntro() {
+    const c = this.context,
+      intro = this.intro;
+    if (!c || !intro) return;
+    const fade = c.createGain();
+    intro.source.disconnect();
+    intro.source.connect(fade);
+    fade.connect(this.effects!);
+    fade.gain.setValueAtTime(1, c.currentTime);
+    fade.gain.linearRampToValueAtTime(0, c.currentTime + 0.02);
+    intro.source.stop(c.currentTime + 0.03);
+    intro.source.onended = () => {
+      intro.source.disconnect();
+      fade.disconnect();
+    };
+    this.intro = undefined;
+  }
+  /** Keep the recorded boot sound aligned with the reference clock; restart after seeks, pauses or drift. */
+  private syncIntro(time: number, halt: boolean) {
+    const c = this.context,
+      offset = time - INTRO_START;
+    const wanted =
+      !halt &&
+      this.prefs.sound &&
+      !!c &&
+      c.state === "running" &&
+      !!this.buffers &&
+      !document.hidden &&
+      offset >= 0 &&
+      offset < this.buffers.intro.duration;
+    if (this.intro) {
+      const playing =
+        this.intro.offset + (c!.currentTime - this.intro.startedAt);
+      if (wanted && Math.abs(playing - offset) < 0.08) return;
+      this.stopIntro();
+    }
+    if (!wanted) return;
+    const source = c!.createBufferSource(),
+      startedAt = c!.currentTime + 0.01;
+    source.buffer = this.buffers!.intro;
+    source.connect(this.effects!);
+    source.onended = () => {
+      source.disconnect();
+      if (this.intro?.source === source) this.intro = undefined;
+    };
+    source.start(startedAt, offset);
+    this.intro = { source, offset, startedAt };
   }
   private stopEffects() {
     if (this.context)
       this.voices.forEach((v) => v.stop(this.context!.currentTime));
     this.voices = [];
     this.lastSound.clear();
+    this.stopIntro();
   }
   setScene(scene: SoundScene) {
     if (this.scene === scene) return;
     this.scene = scene;
     this.bootTime = null;
-    this.bootMix = -1;
     this.stopEffects();
-    this.mixScene();
-  }
-  private mixScene() {
-    if (!this.context) return;
-    const gains = {
-      boot: [0.48, 0.32, 0.18],
-      archive: [0.9, 0.72, 0.65],
-      detail: [0.72, 0.36, 0.12],
-      viewer: [0.8, 0.24, 0.28],
-    }[this.scene];
-    this.stemGains.forEach((g, i) =>
-      level(g.gain, gains[i], this.context!.currentTime, 1.1),
-    );
+    if (this.prefs.music && this.unlocked) void this.activate();
   }
   play(type: Sound = "tick", pan = 0) {
     const c = this.context;
@@ -556,7 +589,6 @@ export class TerminalAudio {
     this.voices = this.voices.filter((v) => v.end > now);
     if (this.voices.length >= 10) this.voices.shift()!.stop(now);
     this.voices.push(synthesizeSound(c, this.effects!, type, now + 0.004, pan));
-    if (type === "key") this.playedKeys++;
     if (
       ["open", "brand", "welcome", "array", "explode", "assemble"].includes(
         type,
@@ -566,46 +598,52 @@ export class TerminalAudio {
       this.duck!.gain.linearRampToValueAtTime(1, now + 0.9);
     }
   }
+  /**
+   * Follow the boot timeline (app seconds; reference time = appTime + 5).
+   * The recorded boot sound plays 1:1 with the picture, and the music enters
+   * where the reference site starts it. Seeks, rewinds and freezes stop both
+   * instead of replaying history; playback resumes from the new position.
+   */
   updateBoot(appTime: number, frozen = false) {
     const time = appTime + 5;
     const previous = this.bootTime;
     this.bootTime = time;
-    const phase = time < 22.76 ? 0 : time < 26.92 ? 1 : time < 34.3 ? 2 : 3;
-    if (phase !== this.bootMix && this.context) {
-      this.bootMix = phase;
-      const gains = [
-        [0.48, 0.32, 0.18],
-        [0.68, 0.55, 0.32],
-        [0.9, 0.72, 0.65],
-        [0.72, 0.36, 0.12],
-      ][phase];
-      this.stemGains.forEach((g, i) =>
-        level(g.gain, gains[i], this.context!.currentTime, 0.9),
-      );
+    const jump = previous === null || time < previous || time - previous > 0.3;
+    if (frozen || jump) {
+      this.voices.forEach((v) => v.stop(this.context?.currentTime ?? 0));
+      this.voices = [];
+      this.lastSound.clear();
     }
-    if (
-      frozen ||
-      previous === null ||
-      time < previous ||
-      time - previous > 0.3
-    ) {
-      this.stopEffects();
+    this.syncIntro(time, frozen || jump);
+    const musicPosition = time - MUSIC_START;
+    if (frozen || musicPosition < 0) {
+      if (this.track) {
+        this.stopMusic();
+        this.offset = Math.max(0, musicPosition);
+      }
       return;
     }
-    for (const cue of BOOT_CUES)
-      if (cue.time > previous && cue.time <= time) this.play(cue.sound);
-    if (hasTypingBetween(previous, time)) this.play("key");
+    if (!this.track && this.prefs.music) {
+      this.offset = musicPosition;
+      this.startMusic();
+    }
   }
   stats() {
     return {
       state: this.context?.state ?? "locked",
       scene: this.scene,
-      tracks: this.tracks.length,
+      tracks: this.track ? 1 : 0,
+      intro: !!this.intro,
+      position: this.track
+        ? this.wrapMusic(
+            this.offset +
+              Math.max(0, this.context!.currentTime - this.startedAt),
+          )
+        : this.offset,
       voices: this.voices.filter(
         (v) => v.end > (this.context?.currentTime ?? 0),
       ).length,
       loaded: !!this.buffers,
-      playedKeys: this.playedKeys,
       error: this.error,
       preferences: { ...this.prefs },
     };

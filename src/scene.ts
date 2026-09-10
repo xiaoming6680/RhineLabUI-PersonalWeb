@@ -423,6 +423,29 @@ export class ArchiveScene {
       },
     };
   }
+  /**
+   * Compile every shader and allocate the render targets while the loading veil
+   * still covers the page. The first real frame at array entry otherwise pays
+   * for the transmission, shadow, ambient-occlusion and depth-of-field programs
+   * at once and stalls the entrance motion.
+   */
+  async warmUp() {
+    if (!this.loaded) return;
+    await this.renderer.compileAsync(this.scene, this.camera);
+    // Draw the two reference states that first use each shader path: the
+    // entered array, then the fully lifted file. Nothing is visible yet.
+    for (const shot of [22.9, 29.2])
+      this.update(this.clock + 0.02, { reveal: 1, lift: 0, zoom: 0, time: shot });
+    this.last = 0;
+    this.setMode("hidden");
+    this.reveal = 0;
+    this.scanTime = 29.1;
+    this.scanBlend = 0;
+    this.lift = { value: 0, velocity: 0 };
+    this.detail = 0;
+    this.appearance.apply(this.model, 0);
+    this.model.position.copy(this.positions[this.selectedSlot]);
+  }
   setMode(mode: "hidden" | "archive" | "detail") {
     if (mode === "detail") this.decryption.enter(this.scanBlend > .9 && this.decryption.clarity > .999);
     else this.decryption.leave();
@@ -1127,8 +1150,10 @@ export class ArchiveScene {
         618,
         close,
       );
+      // Start exactly where the carry segment above ends (518, 288) so the
+      // push-in begins without a one-frame jump of the framing.
       const screenY = THREE.MathUtils.lerp(
-        296 + 34 * extractionCamera,
+        288 + 42 * extractionCamera,
         287,
         close,
       );
@@ -1144,7 +1169,8 @@ export class ArchiveScene {
         .add(new THREE.Vector3(-2.5, 3.7, 0));
       anchorAim.addScaledVector(right, -(screenX - 960) / pixelScale);
       anchorAim.addScaledVector(up, -(540 - screenY) / pixelScale);
-      cameraAim.lerp(anchorAim, ease((shot - 27.3) / 0.5));
+      // The previous segment already follows the anchor fully.
+      cameraAim.copy(anchorAim);
     }
     const framing = archiveFraming(this.container.clientWidth, this.container.clientHeight, span, detail,
       this.container.closest<HTMLElement>("[data-layout]")?.dataset.layout === "compact");

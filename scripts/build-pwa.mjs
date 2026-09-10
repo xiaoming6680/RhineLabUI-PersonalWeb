@@ -6,7 +6,7 @@ const all=await readdir(root,{recursive:true});
 const files=all.map(path=>path.replaceAll('\\','/')).filter(path=>
   path==='index.html'||path==='manifest.webmanifest'||path==='favicon.svg'||
   /^(assets|fonts|icons|archives|licenses)\/[^/]+\.[^/]+$/.test(path)||
-  /^audio\/(atmosphere|motif|pulse)\.ogg$/.test(path)
+  /^audio\/(boot-intro|bgm-loop)\.ogg$/.test(path)
 ).sort();
 if(!files.some(path=>/^assets\/index-.*\.js$/.test(path)))throw Error('Build the application before generating the offline cache.');
 const worker=await readFile('scripts/pwa-worker.js','utf8');

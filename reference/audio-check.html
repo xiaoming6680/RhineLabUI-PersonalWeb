@@ -1,18 +1,20 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>声音验证 · Rhine Lab</title>
 <style>body{max-width:980px;margin:40px auto;padding:0 24px;background:#eee9df;color:#232721;font:16px system-ui;line-height:1.6}button{padding:12px 24px;margin:8px 12px 8px 0}pre{white-space:pre-wrap;font-size:13px}audio{width:100%}video{width:100%;max-height:380px}a{color:inherit}</style>
-<h1>声音验证与试听</h1><p>原创配乐「观测室」· 72 BPM · 53.33 秒循环。下方为固定混音；主程序随浏览、阅读和模型查看调整三条声部。</p>
+<h1>声音验证与试听</h1><p>背景音乐取自参考网站录屏：开场声音 1:1 使用原录音，欢迎页起进入去人声版配乐并在 <span id="loop-info">…</span> 之间循环。</p>
 <p><a href="boot-audio.html">播放完整开场（含原片输入音效） →</a></p>
 <p>卡片动作使用玻璃轻碰；窗口、标志、权限和整块文字使用系统电子反馈；逐字输入使用原片短音。可先比较「打开窗口」「启动标志」「文字显现」，再听卡片动作。</p>
 <section aria-label="逐字输入对照"><h2>逐字输入 · 原片复刻</h2><p>原片输入片段（6.84–7.39 秒，已匹配试听音量）</p><audio controls aria-label="原片逐字输入片段" src="/reference/typing-original.wav"></audio><p>复刻版（原片三个短音轮替，两个输入串与中间停顿）</p><audio controls aria-label="复刻逐字输入" src="/audio/typing-preview.wav"></audio></section>
-<h2>背景音乐与单项音效</h2>
-<audio controls src="/audio/observatory-preview.mp3"></audio>
+<h2>背景音乐与单项音效</h2><p>开场录音（对应参考时间 6.76 秒起）</p><audio controls aria-label="开场录音" src="/audio/boot-intro.ogg"></audio><p>去人声循环版（首次从头播放，之后在循环区间内重复）</p><audio controls aria-label="去人声循环" src="/audio/bgm-loop.ogg"></audio><p><button id="seam">试听循环接缝（接缝前 4 秒 → 接缝后 4 秒，重复三次）</button></p>
 <p id="audition" aria-label="音效试听"></p>
 <button id="test">运行音频检查</button><button id="stop">停止测试声音</button><a href="/?scene=archive">进入终端</a>
 <pre id="result">等待检查。点击后会解码音乐并在离线音频上下文中检查信号。</pre>
 <details><summary>原片对照（6.76–40 秒）</summary><video controls preload="metadata" src="/《明日方舟》特别映像 [莱茵生命：访问] [BV1rr4y1b7sz].mp4#t=6.76,40"></video></details>
 <script type="module">
-import {TerminalAudio,synthesizeSound,BOOT_CUES} from '/src/audio.ts';
-import {TYPING_FRAMES,hasTypingBetween} from '/src/typing-rhythm.ts';
+import {TerminalAudio,synthesizeSound,MUSIC_START} from '/src/audio.ts';
+import {BGM_LOOP} from '/src/bgm-loop.ts';
+import {hasTypingBetween} from '/src/typing-rhythm.ts';
+document.querySelector('#loop-info').textContent=`${BGM_LOOP.loopStart.toFixed(2)}–${BGM_LOOP.loopEnd.toFixed(2)} 秒`;
+let seamContext;document.querySelector('#seam').onclick=async()=>{seamContext?.close();const c=seamContext=new AudioContext();const b=await c.decodeAudioData(await(await fetch('/audio/bgm-loop.ogg')).arrayBuffer());const src=c.createBufferSource();src.buffer=b;src.loop=true;src.loopStart=BGM_LOOP.loopStart;src.loopEnd=BGM_LOOP.loopEnd;src.connect(c.destination);src.start(0,BGM_LOOP.loopEnd-4);src.stop(c.currentTime+24);};
 let terminal=new TerminalAudio();
 const output=document.querySelector('#result');let running=false;
 const sounds={'page-open':'打开窗口','page-close':'关闭窗口','ui-tick':'系统操作',brand:'启动标志','text-reveal':'文字显现',confirm:'权限确认',scan:'权限扫描',welcome:'欢迎页',inspect:'读取标记',key:'逐字输入',tick:'切换档案',column:'切换列',open:'抽取档案',back:'归位返回',array:'阵列进入',explode:'拆解',assemble:'重组'};
@@ -25,10 +27,10 @@ document.querySelector('#stop').onclick=()=>{terminal.configure({sound:false,mus
 document.querySelector('#test').onclick=async()=>{
  if(running)return;running=true;output.textContent='正在验证…';
  try{
-  terminal.configure({sound:true,music:true,soundVolume:0,musicVolume:0});
+  terminal.setScene('archive');terminal.configure({sound:true,music:true,soundVolume:0,musicVolume:0});
   for(let i=0;i<200&&!terminal.stats().loaded&&!terminal.stats().error;i++)await delay(50);
   check(terminal.stats().loaded, '音乐加载成功 '+terminal.stats().error);
-  check(terminal.stats().tracks===3,'三条声部同时播放');
+  check(terminal.stats().tracks===1,'单轨背景音乐播放');
   for(const sound of Object.keys(sounds)){
    const c=new OfflineAudioContext(2,48000*3,48000);synthesizeSound(c,c.destination,sound,.02,.4);
    const b=await c.startRendering();let peak=0,sum=0,last=0,delta=0;
@@ -47,28 +49,29 @@ document.querySelector('#test').onclick=async()=>{
   check(typingPeak>.01&&typingPeak<.15,`25Hz 连续输入无削波（峰值 ${typingPeak.toFixed(3)}）`);
   for(const start of [6.8,11.28,12.8,14.68,16.92,17.96])check(hasTypingBetween(start-.01,start),`字段首字 ${start}s 有输入反馈`);
   check(!hasTypingBetween(18.9,19.48),'闪动后文字恢复不产生输入声');
-  for(const name of ['atmosphere','motif','pulse']){
-   const c=new OfflineAudioContext(2,48000,48000),b=await c.decodeAudioData(await(await fetch(`/audio/${name}.ogg`)).arrayBuffer());
-   check(Math.abs(b.duration-160/3)<.002,`${name} 循环时长准确`);
-   for(let channel=0;channel<2;channel++){
-    const x=b.getChannelData(channel);let peak=0;for(const sample of x){checkFinite(sample);peak=Math.max(peak,Math.abs(sample));}
-    check(peak<.9&&Math.abs(x[0]-x[x.length-1])<.01,`${name} 声道 ${channel+1} 无削波、接缝 < 0.01`);
-   }
+  const decode=async name=>{const c=new OfflineAudioContext(2,48000,48000);return c.decodeAudioData(await(await fetch(`/audio/${name}.ogg`)).arrayBuffer());};
+  const intro=await decode('boot-intro'),music=await decode('bgm-loop');
+  check(Math.abs(intro.duration-BGM_LOOP.introSeconds)<.01,`开场录音时长 ${intro.duration.toFixed(3)}s 与元数据一致`);
+  check(Math.abs(music.duration-BGM_LOOP.duration)<.01,`循环文件时长 ${music.duration.toFixed(3)}s 与元数据一致`);
+  check(BGM_LOOP.loopStart>=0&&BGM_LOOP.loopEnd>BGM_LOOP.loopStart+8&&BGM_LOOP.loopEnd<=music.duration+1e-3,'循环区间在文件范围内');
+  for(let channel=0;channel<2;channel++){
+   const x=music.getChannelData(channel);let peak=0;for(const sample of x){checkFinite(sample);peak=Math.max(peak,Math.abs(sample));}
+   const a=Math.round(BGM_LOOP.loopStart*music.sampleRate),b=Math.round(BGM_LOOP.loopEnd*music.sampleRate);
+   check(peak<.999&&Math.abs(x[a]-x[b-1])<.02,`循环声道 ${channel+1} 无削波、接缝样本差 ${Math.abs(x[a]-x[b-1]).toFixed(4)}`);
   }
-  const cueSounds=[];const tracker=new TerminalAudio();tracker.play=s=>cueSounds.push(s);
+  const tracker=new TerminalAudio();const played=[];tracker.play=s=>played.push(s);
   for(let t=1.76;t<35;t+=.02)tracker.updateBoot(t);
-  check(BOOT_CUES.every(c=>cueSounds.includes(c.sound)),'启动关键事件全部触发');
-  check(cueSounds.filter(s=>s==='key').length===TYPING_FRAMES.length,'逐字显示帧无漏触发或重复触发');
-  const count=cueSounds.length;tracker.updateBoot(1.76);tracker.updateBoot(29,true);tracker.updateBoot(10,true);
-  check(cueSounds.length===count,'倒退、跳转、冻结不补播历史声音');tracker.dispose();
+  check(played.length===0,'开场不再触发合成事件音（改用原录音）');
+  tracker.updateBoot(1.76);tracker.updateBoot(29,true);tracker.updateBoot(10,true);tracker.dispose();
+  check(MUSIC_START>22&&MUSIC_START<23.5,`音乐进入时间 ${MUSIC_START.toFixed(2)}s 位于欢迎页`);
   for(let i=0;i<100;i++)terminal.play(i%2?'tick':'column');
   check(terminal.stats().voices<=10,'连续输入的音效数量受限');
-  terminal.setScene('detail');check(terminal.stats().tracks===3&&terminal.stats().scene==='detail','详情切换保留音乐轨道');
+  terminal.setScene('detail');check(terminal.stats().tracks===1&&terminal.stats().scene==='detail','详情切换保留音乐轨道');
   terminal.configure({sound:true,music:false,soundVolume:0,musicVolume:0});check(terminal.stats().tracks===0,'关闭音乐保留独立音效');
   for(let i=0;i<8;i++) {terminal.configure({sound:false,music:true,soundVolume:0,musicVolume:0});terminal.configure({sound:false,music:false,soundVolume:0,musicVolume:0});}
   await delay(150);check(terminal.stats().tracks===0,'快速开关不产生残留音乐');
   terminal.configure({sound:true,music:true,soundVolume:0,musicVolume:0});await delay(200);
-  check(terminal.stats().tracks===3,'重新开启恰好恢复三轨');
+  check(terminal.stats().tracks===1,'重新开启恰好恢复单轨');
   terminal.configure({sound:false,music:false,soundVolume:0,musicVolume:0});await delay(100);
   check(terminal.stats().state==='suspended'&&terminal.stats().voices===0,'全静音暂停上下文并清空音效');
   line('全部检查通过。听感仍请用耳机和扬声器试听确认。');

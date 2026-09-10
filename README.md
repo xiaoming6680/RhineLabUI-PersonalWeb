@@ -93,13 +93,13 @@ iPhone 可用 Safari 打开在线版，通过“分享 → 添加到主屏幕”
 
 ### 检索、声音与画质
 
-检索支持编号、标题、英文名、科室、相关人物与分类筛选。收藏和设置保存在当前浏览器中。音效区分档案的玻璃碰触与系统操作的电子反馈，背景配乐随开场、阵列、详情和查看器调整三轨比例。
+检索支持编号、标题、英文名、科室、相关人物与分类筛选。收藏和设置保存在当前浏览器中。音效区分档案的玻璃碰触与系统操作的电子反馈；开场声音取自参考网站录屏并与画面逐帧对齐，背景音乐为同一录屏配乐的去人声无缝循环版，从欢迎页开始进入并贯穿浏览、详情与查看器。
 
 | 档案索引 · 关键词与分类筛选 | 系统设置 · 声音与画质 |
 | --- | --- |
 | [![输入莱茵关键词后的档案检索结果](docs/media/search.jpg)](docs/media/search.jpg) | [![独立音效和音乐音量、减少动态效果与画质预设](docs/media/settings.jpg)](docs/media/settings.jpg) |
 
-GIF 不含声音。可单独[试听原创配乐「观测室」](public/audio/observatory-preview.mp3)，完整声音效果请启动应用体验。浏览器可能需要一次点击或按键才允许播放音频。
+GIF 不含声音。资源加载完成后点击「访问数据库」进入，这一次点击同时解锁浏览器的声音播放；完整声音效果请启动应用体验，或打开 `reference/audio-check.html` 试听开场录音、去人声循环及循环接缝。评审页面通过 `?scene=` 或 `?time=` 参数直接进入，不显示该按钮。
 
 ## 快速运行
 
@@ -179,7 +179,7 @@ npm run preview
 | [`src/scene.ts`](src/scene.ts)、[`src/archive-loop.ts`](src/archive-loop.ts) | Three.js 场景、循环阵列、抽取与归位 |
 | [`src/model-viewer.ts`](src/model-viewer.ts) | 独立模型查看器与拆解动画 |
 | [`src/decryption.ts`](src/decryption.ts)、[`src/document-decryption.ts`](src/document-decryption.ts) | 模型解密轨迹与正文同步揭示 |
-| [`src/audio.ts`](src/audio.ts)、[`public/audio/`](public/audio/) | 交互音效、三轨配乐与音源记录 |
+| [`src/audio.ts`](src/audio.ts)、[`public/audio/`](public/audio/) | 交互音效、开场录音、去人声循环配乐与音源记录 |
 | [`src/render-quality.ts`](src/render-quality.ts)、[`src/quality-renderer.ts`](src/quality-renderer.ts) | 画质预设与渲染管线 |
 | [`content/archives.json`](content/archives.json) | 页面与下载共用的五类、40 份档案数据 |
 | [`src/data.ts`](src/data.ts) | 档案类型与阵列位置映射 |
@@ -244,7 +244,7 @@ node scripts/check-quality.mjs
 
 - **MiSans**：使用小米官方字体文件，保留[字体许可](public/fonts/MiSans-license.pdf)及字体目录内的版权说明，设置页也提供署名与许可入口。
 - **Rolling Number**：用于编号和文字滚动，许可见 [`public/licenses/rolling-number.txt`](public/licenses/rolling-number.txt)。
-- **声音**：三轨配乐为本项目程序编配；逐字输入使用原 PV 的三个 38ms 短音，来源与处理记录见 [音频说明](public/audio/README.md)。原片短音及其衍生片段不纳入原创配乐的 MIT 授权声明。
+- **声音**：开场声音与背景音乐来自用户提供的参考网站录屏（`boot-intro.ogg` 为原录音截取，`bgm-loop.ogg` 为去人声并处理循环接缝的衍生版本）；逐字输入短音来自原 PV。来源、切点、模型与处理记录见 [音频说明](public/audio/README.md)。这些录音及其衍生文件的权利归原作者，不纳入本仓库的 MIT 授权声明。
 - **其他依赖**：各自遵循其原有许可。源码公开不改变第三方资源的权利。
 
 源码包包含运行代码、模型、Blender 工程、说明与验证脚本，不包含依赖目录、本机缓存、原 PV 或完整录制素材。

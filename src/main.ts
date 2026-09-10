@@ -70,7 +70,7 @@ $("#stage").innerHTML = `
   <footer class="system-footer"><span><i class="status-light"></i> SESSION AUTHORIZED</span><span>JOYCE MOORE <i>／</i> <span id="clock">00:00:00</span></span><button data-action="replay" title="重播启动流程">REINITIALIZE ↗</button></footer>
   <div id="pwa-update-notice" class="pwa-update-notice" role="status" hidden><span>新版本已就绪</span><button data-pwa-action="update">更新并重启 ↻</button></div>
   <div id="modal-root"></div><div id="toast" class="toast" role="status"></div>
-  <div id="loading" class="loading"><div class="loading-mark">${logo}</div><span>CONNECTING TO INTERNAL DATABASE</span><i></i></div>
+  <div id="loading" class="loading"><div class="loading-mark">${logo}</div><span id="loading-status">CONNECTING TO INTERNAL DATABASE</span><i></i><button id="enter-database" class="loading-enter" hidden>访问数据库 <span>↗</span></button></div>
 `;
 
 $("#boot-background").insertAdjacentHTML(
@@ -939,13 +939,42 @@ async function start() {
       hoverTitle.update({ animated });
     };
     savePrefs();
+    void initPwa(notify);
+    // Shaders and render targets are prepared behind the veil, before the entry button.
+    await scene.warmUp();
+    const params = new URLSearchParams(location.search);
+    // A normal visit waits for one click on the entry button: browsers only allow
+    // sound after a user gesture, so the boot sound and music would otherwise be lost.
+    // Review pages and automation address a scene or time directly and skip the gate.
+    if (!params.has("scene") && !params.has("time")) {
+      const veil = $("#loading"),
+        enter = $<HTMLButtonElement>("#enter-database");
+      // Fill the line, let the old status fade out, then fade the new one in before the button.
+      const status = $("#loading-status");
+      veil.classList.add("connected");
+      await new Promise((r) => setTimeout(r, 380));
+      status.classList.add("swapping");
+      await new Promise((r) => setTimeout(r, 320));
+      status.textContent = "INTERNAL DATABASE CONNECTED";
+      status.classList.remove("swapping");
+      enter.hidden = false;
+      veil.classList.add("ready");
+      // Keyboard users can press Enter at once; no focus ring is drawn for the script focus.
+      enter.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
+      await new Promise<void>((resolve) => {
+        enter.onclick = () => {
+          enter.disabled = true;
+          void audio.unlock();
+          resolve();
+        };
+      });
+    }
     ready = true;
     bootStart = performance.now() / 1000;
     setMode("boot");
     select(0);
     $("#loading").classList.add("loaded");
     setTimeout(() => $("#loading").remove(), 600);
-    const params = new URLSearchParams(location.search);
     if (params.get("scene") === "archive") setMode("archive");
     if (params.get("scene") === "detail") setMode("detail");
     bootStart -= params.has("time") ? Number(params.get("time")) : 1.76;
@@ -953,7 +982,6 @@ async function start() {
     if (!params.has("time")) bootStart += 0.6;
     if (prefs.reduced && !params.has("time")) setMode("archive");
     requestAnimationFrame(frame);
-    void initPwa(notify);
   } catch (error) {
     console.error(error);
     $("#loading").innerHTML =
