@@ -25,8 +25,11 @@ export class DocumentDecryption {
     const targets = this.root.querySelectorAll<HTMLElement>(
       "h2, .detail-title-cn, .metadata dd, .tab-panel p, .research-notes li, .log-row",
     );
+    // Read every measurement first, then append every cover: interleaving the
+    // two forces a full layout per paragraph and stalls the opening frame.
+    targets.forEach((target) => target.classList.add("document-redacted"));
+    const measured: { target: HTMLElement; width: number; lines: { x: number; y: number; right: number; bottom: number }[] }[] = [];
     targets.forEach((target) => {
-      target.classList.add("document-redacted");
       const bounds = target.getBoundingClientRect();
       const scale = bounds.width / target.offsetWidth;
       if (!scale || !Number.isFinite(scale)) return;
@@ -52,12 +55,15 @@ export class DocumentDecryption {
           } else lines.push({ x, y, right, bottom });
         }
       }
+      measured.push({ target, width: target.clientWidth, lines });
+    });
+    measured.forEach(({ target, width, lines }) => {
       for (const line of lines) {
         const window = document.createElement("span");
         window.className = "document-redaction-window";
         window.setAttribute("aria-hidden", "true");
         const left = Math.max(0, line.x - 1);
-        const right = Math.min(target.clientWidth, line.right + 1);
+        const right = Math.min(width, line.right + 1);
         window.style.cssText = `left:${left}px;top:${line.y - 1}px;width:${right - left}px;height:${line.bottom - line.y + 2}px`;
         const ink = document.createElement("span");
         ink.className = "document-redaction-ink";

@@ -514,7 +514,9 @@ export class ArchiveScene {
     const canvas = document.createElement("canvas");
     canvas.width = this.labelCanvas.width;
     canvas.height = this.labelCanvas.height;
-    canvas.getContext("2d")!.drawImage(this.labelCanvas, 0, 0);
+    // A software canvas uploads to WebGL as a plain copy; a GPU canvas makes the
+      // upload wait for its raster and costs a whole frame on every selection.
+      canvas.getContext("2d", { willReadFrequently: true })!.drawImage(this.labelCanvas, 0, 0);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
@@ -697,7 +699,9 @@ export class ArchiveScene {
       const canvas = document.createElement("canvas");
       canvas.width = 1024;
       canvas.height = 440;
-      canvas.getContext("2d")!.drawImage(this.labelCanvas, 0, 0);
+      // A software canvas uploads to WebGL as a plain copy; a GPU canvas makes the
+      // upload wait for its raster and costs a whole frame on every selection.
+      canvas.getContext("2d", { willReadFrequently: true })!.drawImage(this.labelCanvas, 0, 0);
       const map = new THREE.CanvasTexture(canvas);
       map.colorSpace = THREE.SRGBColorSpace;
       label.material = new THREE.MeshBasicMaterial({
@@ -754,7 +758,7 @@ export class ArchiveScene {
   }
   private drawLabel(index: number) {
     if (!this.labelTexture) return;
-    const c = this.labelCanvas.getContext("2d")!;
+    const c = this.labelCanvas.getContext("2d", { willReadFrequently: true })!;
     c.fillStyle = "#e6e2d9";
     c.fillRect(0, 0, 1024, 440);
     c.fillStyle = "#171713";

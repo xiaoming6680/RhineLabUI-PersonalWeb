@@ -295,6 +295,9 @@ button {
   transition:
     opacity 0.7s,
     transform 1s;
+  /* The exit applies a blur/colour filter every frame. Promote the block so the
+     compositor filters its layer instead of re-rasterizing the full-width text. */
+  will-change: transform, opacity, filter;
 }
 .welcome strong {
   display: inline-block;

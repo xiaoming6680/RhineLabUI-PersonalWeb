@@ -1,11 +1,20 @@
 #viewport > .loading { position: fixed; }
-.entry-controls { display: flex; align-items: center; flex-direction: column; margin-top: 32px; max-width: calc(100vw - 40px); text-align: center; }
+.entry-controls { display: flex; align-items: center; flex-direction: column; margin-top: 32px; max-width: calc(100vw - 40px); text-align: center; opacity: 0; transform: translateY(10px); transition: opacity 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s, transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s; }
+.loading[data-entry="waiting"] .entry-controls, .loading[data-entry="starting"] .entry-controls, .loading[data-entry="error"] .entry-controls { opacity: 1; transform: none; }
+.loading > span { transition: opacity 0.38s ease, transform 0.38s ease; }
+.loading > span.swapping { opacity: 0; transform: translateY(-3px); }
+.loading[data-entry="connecting"] > i:after { animation: none; width: 100%; transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1); }
+/* Ease out: the veil lifts slowly while its content settles, instead of a flat cut. */
+.loading.loaded { transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1); }
+.loading.loaded .loading-mark, .loading.loaded > span, .loading.loaded > i, .loading.loaded .entry-controls { transform: translateY(-6px); transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1); }
+.loading:not([data-input="keyboard"]) .entry-start:focus-visible, .loading:not([data-input="keyboard"]) .entry-silent:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) { .entry-controls, .loading > span, .loading.loaded, .loading.loaded * { transition: none !important; transform: none !important; } }
 .entry-start { min-height: 48px; padding: 8px 24px; border-block: 1px solid #969183; font-size: 16px; letter-spacing: 2px; }
 .entry-start:disabled, .entry-start[aria-disabled="true"] { color: #888277; cursor: wait; }
 .entry-start:focus-visible, .entry-silent:focus-visible { outline: 2px solid #555c45; outline-offset: 5px; }
 .entry-silent { min-height: 44px; margin-top: 12px; font-size: 13px; color: #666454; text-decoration: underline; text-underline-offset: 4px; }
 .entry-status { font-size: 12px; color: #777468; line-height: 1.8; margin: 14px 0 0; }
-.loading[data-entry="waiting"] > i:after, .loading[data-entry="error"] > i:after { animation: none; width: 100%; }
+.loading[data-entry="waiting"] > i:after, .loading[data-entry="starting"] > i:after, .loading[data-entry="error"] > i:after { animation: none; width: 100%; }
 @media (max-width: 600px) {
   .loading-mark { width: 125px; margin-bottom: 32px; }
   .loading > span { font-size: 9px; letter-spacing: 1.3px; }

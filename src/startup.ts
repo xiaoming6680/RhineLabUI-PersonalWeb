@@ -29,8 +29,13 @@ export class StartupGate {
         this.finish(true);
       } else if (this.state === "waiting" || this.state === "error") void this.enter();
     });
+    // The focus ring only appears for keyboard users; the scripted focus after
+    // loading must not draw a selection box for pointer users.
+    root.dataset.input = "pointer";
+    root.addEventListener("pointerdown", () => { root.dataset.input = "pointer"; }, { capture: true });
     root.addEventListener("keydown", event => {
       event.stopPropagation();
+      if (["Tab", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) root.dataset.input = "keyboard";
       if (event.key === "Tab") {
         const buttons = [this.button, this.silent].filter(button => !button.disabled && !button.hidden);
         if (!buttons.length) { event.preventDefault(); return; }
@@ -45,12 +50,23 @@ export class StartupGate {
   get phase() { return this.state; }
   ready() {
     this.state = "waiting";
-    this.options.root.dataset.entry = "waiting";
-    this.button.disabled = false;
-    this.button.textContent = "点击进入 →";
-    this.options.root.querySelector(":scope > span")!.textContent = "INTERNAL DATABASE / READY";
-    this.status.textContent = "轻触屏幕或按 Enter 开始";
-    this.button.focus({ preventScroll: true });
+    const root = this.options.root;
+    const line = root.querySelector<HTMLElement>(":scope > span")!;
+    // Let the progress line fill and the status fade out before the new text
+    // and the controls ease in; the button stays disabled until it is visible.
+    root.dataset.entry = "connecting";
+    line.classList.add("swapping");
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(() => {
+      if (this.state !== "waiting") return;
+      line.textContent = "INTERNAL DATABASE / READY";
+      line.classList.remove("swapping");
+      root.dataset.entry = "waiting";
+      this.button.disabled = false;
+      this.button.textContent = "点击进入 →";
+      this.status.textContent = "轻触屏幕或按 Enter 开始";
+      this.button.focus({ preventScroll: true });
+    }, reduced ? 0 : 420);
   }
   private async enter() {
     const request = ++this.request;
@@ -58,9 +74,14 @@ export class StartupGate {
     this.options.root.dataset.entry = "starting";
     // aria-disabled preserves keyboard focus while repeated input is ignored.
     this.button.setAttribute("aria-disabled", "true");
-    this.button.textContent = "正在准备声音…";
-    this.status.textContent = "准备完成后开始播放";
-    this.silent.hidden = false;
+    // Decoding usually finishes well within a second; only a slow start shows
+    // the preparing state, so a normal entry fades out without a text flicker.
+    const preparing = setTimeout(() => {
+      if (this.state !== "starting" || request !== this.request) return;
+      this.button.textContent = "正在准备声音…";
+      this.status.textContent = "准备完成后开始播放";
+      this.silent.hidden = false;
+    }, 1200);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const unlocked = await Promise.race([
@@ -76,6 +97,7 @@ export class StartupGate {
         this.button.removeAttribute("aria-disabled");
         this.button.textContent = "重试声音并进入 →";
         this.status.textContent = "声音暂未就绪，请重试或无声进入";
+        this.silent.hidden = false;
       }
     } catch {
       if (request !== this.request) return;
@@ -85,7 +107,8 @@ export class StartupGate {
       this.button.removeAttribute("aria-disabled");
       this.button.textContent = "重试声音并进入 →";
       this.status.textContent = "声音暂未就绪，请重试或无声进入";
-    } finally { clearTimeout(timer); }
+      this.silent.hidden = false;
+    } finally { clearTimeout(timer); clearTimeout(preparing); }
   }
   private finish(silent: boolean) {
     if (this.state === "started") return;

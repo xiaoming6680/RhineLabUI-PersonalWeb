@@ -389,6 +389,7 @@ function select(index: number, navigation?: ArchiveNavigation) {
   activeTab = "overview";
   scene?.select(selected, navigation);
   updateSelection(navigation);
+  if (mode === "archive") scheduleDetailPrepare();
   const columnMove = navigation && "axis" in navigation && navigation.axis === "lane";
   audio.play(columnMove ? "column" : "tick", columnMove ? navigation.direction * .45 : 0);
 }
@@ -496,7 +497,32 @@ function toggleSaved() {
   audio.play("confirm");
   notify(saved.has(id) ? "档案已加入收藏" : "已取消收藏");
 }
-function renderDetail() {
+let detailRendered: { index: number; tab: string } | null = null;
+let detailPrepare: number | undefined;
+/** Build the detail document ahead of time so opening a file only reveals it. */
+function scheduleDetailPrepare() {
+  if (detailPrepare !== undefined) (window.cancelIdleCallback ?? clearTimeout)(detailPrepare);
+  const run = () => {
+    detailPrepare = undefined;
+    if (ready && mode === "archive" && !modal && !viewer?.isOpen) renderDetail(true);
+  };
+  detailPrepare = "requestIdleCallback" in window ? requestIdleCallback(run, { timeout: 800 }) : setTimeout(run, 250);
+}
+function renderDetail(prepare = false) {
+  const clear = prefs.reduced || !scene || scene.decryptionFrame.phase === "clear";
+  if (!prepare && detailRendered?.index === selected && detailRendered.tab === activeTab && $("#detail-content").childElementCount) {
+    // Prepared while hidden: only the tab indicator and the redaction covers
+    // depend on layout. Read the indicator now, and measure the covers on the
+    // next frame: the text is still invisible then, and the mode switch keeps
+    // its single style/layout pass instead of three.
+    placeTabIndicator(false);
+    const target = $("#detail-content");
+    requestAnimationFrame(() => {
+      if (mode === "detail" && target.isConnected) documentDecryption.reset(target, clear);
+    });
+    return;
+  }
+  detailRendered = { index: selected, tab: activeTab };
   tabTransition.cancel();
   const r = records[selected];
   $("#object-id").textContent = "NO." + String(selected + 1).padStart(3, "0");
@@ -511,8 +537,14 @@ function renderDetail() {
   <div class="detail-footnote"><a href="${escapeHtml(r.source)}" target="_blank" rel="noopener">设定参考 ↗</a><span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
   $("#detail-content").setAttribute("tabindex", "-1");
   $('[data-action="bookmark"]').setAttribute("aria-pressed", String(saved.has(r.id)));
-  documentDecryption.reset($("#detail-content"), prefs.reduced || !scene || scene.decryptionFrame.phase === "clear");
+  documentDecryption.reset($("#detail-content"), clear);
   setTab(activeTab, false);
+}
+function placeTabIndicator(animated: boolean) {
+  const tabButton = $<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
+  const indicator = $(".tab-indicator");
+  indicator.style.transition = animated ? "" : "none";
+  indicator.style.transform = `translateX(${tabButton.offsetLeft}px) scaleX(${tabButton.offsetWidth})`;
 }
 function overview() {
   return `<div class="panel-label">ABSTRACT / 摘要</div><p>${escapeHtml(records[selected].abstract)}</p>`;
@@ -528,9 +560,7 @@ function setTab(tab: string, sound = true) {
   });
   const r = records[selected];
   const tabButton = $<HTMLButtonElement>(`[data-tab="${tab}"]`);
-  const indicator = $(".tab-indicator");
-  indicator.style.transition = sound ? "" : "none";
-  indicator.style.transform = `translateX(${tabButton.offsetLeft}px) scaleX(${tabButton.offsetWidth})`;
+  placeTabIndicator(sound);
   $("#tab-panel").setAttribute("aria-labelledby", tabButton.id);
   $("#tab-panel").innerHTML =
     tab === "overview"
@@ -1105,6 +1135,8 @@ async function start() {
     if (scene) bindScene(scene);
     // Shaders and render targets are prepared behind the veil, before the entry screen.
     if (scene) await scene.warmUp();
+    // The opening ends by opening the first file; build its document now.
+    renderDetail(true);
     savePrefs();
     ready = true;
     select(0);
@@ -1132,7 +1164,7 @@ function completeStartup(silent: boolean) {
   }
   audio.releaseEntry();
   audio.restartBoot();
-  const fade = prefs.reduced ? 0 : 600;
+  const fade = prefs.reduced ? 0 : 900;
   bootStart = performance.now() / 1000 - (reviewParams.has("time") ? Number(reviewParams.get("time")) : 1.76);
   if (!reviewParams.has("time")) bootStart += fade / 1000;
   setMode("boot");

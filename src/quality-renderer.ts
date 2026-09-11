@@ -51,6 +51,12 @@ export function resizeQuality(
     renderer.capabilities.maxTextureSize,
     superPerformance ? 921_600 : 8_294_400,
   );
+  // Layout changes that keep the same pixel size (the opening frame becoming
+  // the desktop frame) must not resize: every pass would reallocate its
+  // full-resolution targets and stall the frame that opens the archive.
+  const signature = JSON.stringify([width, height, dimensions.ratio, quality, superPerformance]);
+  if (host.dataset.renderSignature === signature) return dimensions;
+  host.dataset.renderSignature = signature;
   renderer.setPixelRatio(dimensions.ratio);
   renderer.setSize(width, height);
   composer.setPixelRatio(dimensions.ratio);
