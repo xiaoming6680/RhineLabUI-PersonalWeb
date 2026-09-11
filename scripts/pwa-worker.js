@@ -7,12 +7,29 @@ const urls = FILES.map(path => new URL(path, self.registration.scope).href);
 const allowed = new Set(urls);
 const index = new URL("index.html", self.registration.scope).href;
 
+// Cloudflare Pages answers /index.html with a 308 to /, so the precached entry is
+// a redirected response. Browsers refuse a redirected response for a navigation
+// request (Chromium fails the page with ERR_FAILED), so store a plain copy instead.
+async function clean(response) {
+  if (!response?.redirected) return response;
+  return new Response(await response.arrayBuffer(), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
+async function storeClean(cache, key) {
+  const response = await cache.match(key);
+  if (response?.redirected) await cache.put(key, await clean(response));
+}
+
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     try {
       const cache = await caches.open(CACHE);
       // Conditional validation also catches model/font changes at stable URLs.
       await cache.addAll(urls.map(url => new Request(url, { cache: "no-cache" })));
+      await storeClean(cache, index);
     } catch (error) {
       await caches.delete(CACHE);
       throw error;
@@ -43,7 +60,7 @@ self.addEventListener("fetch", event => {
     const cache = await caches.open(CACHE);
     // HTML, hashed bundles and stable model URLs come from the same release.
     // A new release stays waiting until the user chooses to restart or exits.
-    const cached = await cache.match(key);
+    const cached = await clean(await cache.match(key));
     return cached ?? fetch(event.request);
   })());
 });
