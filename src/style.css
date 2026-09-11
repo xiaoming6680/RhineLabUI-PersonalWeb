@@ -1,31 +1,4 @@
-@font-face {
-  font-family: "MiSans";
-  src: url("/fonts/MiSans-Light.woff2") format("woff2");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "MiSans";
-  src: url("/fonts/MiSans-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "MiSans";
-  src: url("/fonts/MiSans-Demibold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "MiSans";
-  src: url("/fonts/MiSans-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+@import "./fonts.css";
 * {
   box-sizing: border-box;
 }
@@ -131,7 +104,7 @@ button {
 }
 .brand h1 {
   font-size: 44px;
-  letter-spacing: 2.5px;
+  letter-spacing: 2.324px;
   line-height: 48px;
   margin: 0;
   font-weight: 750;
@@ -139,7 +112,7 @@ button {
 .brand > div {
   font-size: 19px;
   line-height: 23px;
-  letter-spacing: 0.65px;
+  letter-spacing: 0.587px;
   font-weight: 600;
 }
 .brand p {
@@ -1436,15 +1409,6 @@ button {
   font-size: 11px;
   letter-spacing: 2px;
   color: #888277;
-  transition:
-    opacity 0.32s ease,
-    letter-spacing 0.32s ease,
-    transform 0.32s ease;
-}
-.loading > span.swapping {
-  opacity: 0;
-  letter-spacing: 3px;
-  transform: translateY(-3px);
 }
 .loading > i {
   width: 180px;
@@ -1461,45 +1425,6 @@ button {
   width: 60px;
   background: #414639;
   animation: loading 1.3s ease-in-out infinite;
-}
-.loading.connected > i:after {
-  animation: none;
-  width: 100%;
-  transition: width 0.4s;
-}
-.loading-enter {
-  margin-top: 36px;
-  padding: 13px 28px;
-  border: 1px solid #414639;
-  color: #414639;
-  font-size: 13px;
-  letter-spacing: 3px;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  opacity: 0;
-  transform: translateY(6px);
-  transition:
-    opacity 0.5s 0.25s,
-    transform 0.5s 0.25s,
-    background 0.2s,
-    color 0.2s;
-}
-.loading.ready .loading-enter {
-  opacity: 1;
-  transform: none;
-}
-.loading-enter span {
-  font-size: 18px;
-  line-height: 1;
-}
-.loading-enter:hover {
-  background: #414639;
-  color: #e8e5e1;
-}
-.loading-enter:disabled {
-  opacity: 0.5;
-  pointer-events: none;
 }
 .error-state {
   width: 700px;

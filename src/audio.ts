@@ -26,6 +26,8 @@ export type AudioPreferences = {
   soundVolume: number;
   musicVolume: number;
 };
+/** Recorded boot sound and the looping music, fetched together while the entry screen is visible. */
+const AUDIO_FILES = ["boot-intro", "bgm-loop"] as const;
 /** Reference time (seconds) at which the recorded boot sound starts: the first white frame. */
 export const INTRO_START = 6.76;
 /** Reference time at which the music enters: the end of the boot recording (the welcome page). */
@@ -303,6 +305,8 @@ export class TerminalAudio {
   private duck?: GainNode;
   private buffers?: { intro: AudioBuffer; music: AudioBuffer };
   private loading?: Promise<void>;
+  private fetching?: Promise<ArrayBuffer[]>;
+  private audioData?: ArrayBuffer[];
   private track?: AudioBufferSourceNode;
   private intro?: {
     source: AudioBufferSourceNode;
@@ -320,6 +324,14 @@ export class TerminalAudio {
   private error = "";
   private requestId = 0;
   private suspension: Promise<void> = Promise.resolve();
+  private playedKeys = 0;
+  private entryPending = false;
+  private hostPaused = false;
+  setHostPaused(paused: boolean) {
+    this.hostPaused = paused;
+    if (paused) this.hide();
+    else this.visibility();
+  }
   constructor() {
     document.addEventListener("pointerdown", this.gesture, { capture: true });
     document.addEventListener("keydown", this.gesture, { capture: true });
@@ -328,13 +340,38 @@ export class TerminalAudio {
     window.addEventListener("pageshow", this.visibility);
   }
   private gesture = () => {
+    if (this.entryPending) return;
     this.unlocked = true;
     void this.activate();
   };
+  holdForEntry() {
+    this.entryPending = true;
+  }
+  releaseEntry() {
+    this.entryPending = false;
+  }
+  cancelEntry() {
+    this.hide();
+  }
   async unlock() {
     this.unlocked = true;
     await this.activate();
-    return this.context?.state === "running";
+    return this.context?.state === "running" && (!this.prefs.music || Boolean(this.buffers));
+  }
+  // Fetch compressed tracks while the entry screen is visible; create/resume
+  // the audio device only from a real click or keyboard activation.
+  prepareMusic() {
+    if (this.audioData) return Promise.resolve(this.audioData);
+    this.fetching ??= Promise.all(AUDIO_FILES.map(async name => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch(assetUrl(`audio/${name}.ogg`), { signal: controller.signal });
+        if (!response.ok) throw new Error(`Audio ${name}: ${response.status}`);
+        return await response.arrayBuffer();
+      } finally { clearTimeout(timeout); }
+    })).then(data => this.audioData = data).finally(() => { this.fetching = undefined; });
+    return this.fetching;
   }
   restartBoot() {
     this.stopEffects();
@@ -352,7 +389,7 @@ export class TerminalAudio {
   private visibility = () => {
     this.bootTime = null;
     if (document.hidden) this.hide();
-    else if (this.unlocked) void this.activate();
+    else if (this.unlocked && !this.entryPending) void this.activate();
   };
   configure(prefs: AudioPreferences) {
     this.prefs = {
@@ -377,7 +414,7 @@ export class TerminalAudio {
     if (!this.prefs.sound) this.stopEffects();
     if (!this.prefs.music) this.stopMusic();
     if (!this.prefs.sound && !this.prefs.music) this.hide();
-    else if (this.unlocked) void this.activate();
+    else if (this.unlocked && !this.entryPending) void this.activate();
   }
   private createContext() {
     const c = (this.context = new AudioContext()),
@@ -404,6 +441,7 @@ export class TerminalAudio {
   private async activate() {
     if (
       this.disposed ||
+      this.hostPaused ||
       document.hidden ||
       !this.unlocked ||
       (!this.prefs.sound && !this.prefs.music)
@@ -412,9 +450,12 @@ export class TerminalAudio {
     const id = ++this.requestId;
     try {
       const c = this.context ?? this.createContext();
-      await this.suspension;
+      // Call resume before awaiting network or an earlier suspension so the
+      // browser observes this call in the user's activation handler.
+      const resume = c.state === "running" ? Promise.resolve() : c.resume();
+      await Promise.all([this.suspension, resume]);
       if (id !== this.requestId || this.disposed || document.hidden) return;
-      if (c.state === "suspended") await c.resume();
+      if (c.state !== "running") return;
       if (id !== this.requestId || document.hidden || this.disposed) return;
       await this.loadAssets(c);
       if (id === this.requestId) this.startMusic();
@@ -424,13 +465,8 @@ export class TerminalAudio {
   }
   private loadAssets(c: AudioContext) {
     if (this.buffers) return Promise.resolve();
-    this.loading ??= Promise.all(
-      ["boot-intro", "bgm-loop"].map(async (name) => {
-        const response = await fetch(assetUrl(`audio/${name}.ogg`));
-        if (!response.ok) throw new Error(`Audio ${name}: ${response.status}`);
-        return c.decodeAudioData(await response.arrayBuffer());
-      }),
-    )
+    this.loading ??= this.prepareMusic()
+      .then(data => Promise.all(data.map(bytes => c.decodeAudioData(bytes.slice(0)))))
       .then(([intro, music]) => {
         this.buffers = { intro, music };
         this.error = "";
@@ -453,6 +489,7 @@ export class TerminalAudio {
       !c ||
       c.state !== "running" ||
       !this.buffers ||
+      this.hostPaused ||
       this.track ||
       !this.prefs.music ||
       !this.musicAllowed() ||
@@ -528,6 +565,7 @@ export class TerminalAudio {
       offset = time - INTRO_START;
     const wanted =
       !halt &&
+      !this.hostPaused &&
       this.prefs.sound &&
       !!c &&
       c.state === "running" &&
@@ -571,6 +609,7 @@ export class TerminalAudio {
     const c = this.context;
     if (
       !this.prefs.sound ||
+      this.hostPaused ||
       !c ||
       c.state !== "running" ||
       document.hidden ||
@@ -588,7 +627,12 @@ export class TerminalAudio {
     this.lastSound.set(type, now);
     this.voices = this.voices.filter((v) => v.end > now);
     if (this.voices.length >= 10) this.voices.shift()!.stop(now);
-    this.voices.push(synthesizeSound(c, this.effects!, type, now + 0.004, pan));
+    const voice = synthesizeSound(c, this.effects!, type, now + 0.004, pan);
+    this.voices.push(voice);
+    if (this.prefs.soundVolume > 0) window.dispatchEvent(new CustomEvent("rhine-local-sound", {
+      detail: { until: performance.now() / 1000 + Math.max(0, voice.end - now) + .2 },
+    }));
+    if (type === "key") this.playedKeys++;
     if (
       ["open", "brand", "welcome", "array", "explode", "assemble"].includes(
         type,
@@ -644,6 +688,7 @@ export class TerminalAudio {
         (v) => v.end > (this.context?.currentTime ?? 0),
       ).length,
       loaded: !!this.buffers,
+      playedKeys: this.playedKeys,
       error: this.error,
       preferences: { ...this.prefs },
     };

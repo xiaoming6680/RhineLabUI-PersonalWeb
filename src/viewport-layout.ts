@@ -1,4 +1,9 @@
 /** Reference coordinates remain exact during the film and at 1920 × 1080. */
+export function openingLayout(width: number, height: number) {
+  width = Math.max(1, width); height = Math.max(1, height);
+  const scale = Math.min(height / 1080, width / 1280);
+  return { width: width / scale, height: height / scale, scale, kind: "opening" as const };
+}
 export function viewportLayout(width: number, height: number, coarse: boolean, cinematic = false) {
   width = Math.max(1, width);
   height = Math.max(1, height);
@@ -30,12 +35,4 @@ export function archiveFraming(width: number, height: number, span: number, deta
     detailX: portrait ? 0.5 : compact ? 0.27 : 550 / 1920,
     detailY: portrait ? 0.27 + 34 / height : compact ? 0.49 : 560 / 1080,
   };
-}
-
-export function swipeDirection(dx: number, dy: number, elapsed: number) {
-  const major = Math.max(Math.abs(dx), Math.abs(dy));
-  const minor = Math.min(Math.abs(dx), Math.abs(dy));
-  if (major < 36 || major < minor * 1.3 || elapsed > 1400) return null;
-  return { axis: Math.abs(dx) > Math.abs(dy) ? "lane" as const : "row" as const,
-    direction: (Math.abs(dx) > Math.abs(dy) ? dx : dy) < 0 ? 1 : -1 };
 }
