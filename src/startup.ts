@@ -33,6 +33,15 @@ export class StartupGate {
     // loading must not draw a selection box for pointer users.
     root.dataset.input = "pointer";
     root.addEventListener("pointerdown", () => { root.dataset.input = "pointer"; }, { capture: true });
+    document.addEventListener("keydown", event => {
+      if (root.contains(event.target as Node) || (this.state !== "waiting" && this.state !== "error")) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      root.dataset.input = "keyboard";
+      this.button.focus({ preventScroll: true });
+      void this.enter();
+    }, { capture: true });
     root.addEventListener("keydown", event => {
       event.stopPropagation();
       if (["Tab", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) root.dataset.input = "keyboard";
@@ -65,7 +74,10 @@ export class StartupGate {
       this.button.disabled = false;
       this.button.textContent = "点击进入 →";
       this.status.textContent = "轻触屏幕或按 Enter 开始";
-      this.button.focus({ preventScroll: true });
+      // Focusing the button would draw a focus ring in browsers that treat a
+      // fresh page as keyboard-driven. Pointer users get no focus; Enter and
+      // Space are handled below without it.
+      if (root.dataset.input === "keyboard") this.button.focus({ preventScroll: true });
     }, reduced ? 0 : 420);
   }
   private async enter() {
